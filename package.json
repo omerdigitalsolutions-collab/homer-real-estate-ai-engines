@@ -1,0 +1,32 @@
+{
+  "name": "homer-real-estate-ai-engines",
+  "version": "1.0.0",
+  "description": "Production engines extracted from a multi-tenant real-estate SaaS CRM — weighted matchmaking, AI copilot with function calling, WhatsApp AI agent, concurrency-safe lead distribution, and more.",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "demo:matchmaking": "ts-node examples/matchmaking-demo.ts",
+    "demo:copilot": "ts-node examples/copilot-demo.ts",
+    "demo:classifier": "ts-node examples/classifier-demo.ts"
+  },
+  "keywords": [
+    "real-estate",
+    "matchmaking",
+    "gemini",
+    "function-calling",
+    "ai-agent",
+    "whatsapp-bot",
+    "firebase",
+    "typescript"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.0"
+  }
+}
