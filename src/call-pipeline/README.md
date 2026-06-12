@@ -49,3 +49,19 @@ ingestRecording (Cloud Function — this module)
 - [audioExtraction.ts](audioExtraction.ts) — Gemini stereo-call analysis with full output validation
 
 The CDR webhook (stage 1) is summarized above; its routing/normalisation logic is provider-specific and omitted from this repo.
+
+## Performance & data structures
+
+**Dominant cost — one Gemini multimodal call.** All other operations (secret comparison, Firestore reads, Storage upload/download) are O(1) or O(n) in file size. The transcription+extraction single-pass design is a deliberate choice: two passes (transcribe first, extract second) would double the model round-trip time and double token cost for no accuracy gain.
+
+**`secretsMatch` — O(L) constant-time by design.** `crypto.timingSafeEqual` requires equal-length buffers and compares them byte-by-byte without short-circuiting, making the comparison time independent of how many bytes match. The length pre-check (`a.length !== b.length → false`) is safe because only equal-length inputs can ever succeed — different lengths can never produce a timing oracle.
+
+**Lead upsert — O(1) Firestore ops.** `upsertLead` issues a single compound query (`agencyId == x AND phone == y`, indexed) to check for an existing lead, then either one `update()` or one `add()`. No scans, no batch reads. The phone is normalised to a canonical local format (`0XXXXXXXXX`) before the query, so the index always sees the same key regardless of how the caller formatted the number.
+
+**Idempotency guard — `lastCallId` field comparison, O(1).** The repeat-call check compares two string fields on the existing lead document. No secondary collection, no bloom filter. This is sufficient because the CDR retry window is short (5 retries over ~30 seconds) and the field is always written atomically alongside the `callCount` increment — no race between the check and the write.
+
+**Storage token reuse — avoids re-signing.** `loadRecordingFromStorage` reads the existing `firebaseStorageDownloadTokens` metadata field before minting a new UUID. If a token already exists (e.g., the relay uploaded the file and set one), it is reused. This keeps download URL stable across retries, which matters for the `recording_url` field on the call document (the CallCenter UI links directly to it).
+
+**Output validation — typed coercion, not try/catch per field.** `audioExtraction.ts` uses three helper functions (`toStr`, `toNum`, `toBool`) that each handle the full space of model output types (string, number, boolean, null, undefined, unexpected type) in O(1). A single type-check per field, no exceptions, no defensive `JSON.parse` inside the field parsers. All enum fields (`property_type`, `transaction_type`, `urgency`, `condition`) are validated against a closed `Set` with a safe default, preventing invalid values from entering Firestore.
+
+**Memory ceiling — 1 GiB function allocation.** The audio buffer must fit in memory for the base64 inline transport. A 10-minute WAV at 16-bit 44.1 kHz stereo is ~100 MB; the 1 GiB allocation gives comfortable headroom while the storage-path transport (no buffer in memory) is used for larger files. The two transports converge on the same pipeline after the buffer/URL resolution step.

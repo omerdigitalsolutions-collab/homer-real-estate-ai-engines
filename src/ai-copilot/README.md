@@ -40,3 +40,17 @@ The demo asks (in Hebrew): *"Find matching properties for the lead Avi Cohen and
 ## What was adapted for this repo
 
 The original runs as a Firebase callable with `agencyId` extracted server-side from JWT custom claims, executors hitting tenant-scoped Firestore collections, and WhatsApp delivery via per-agency Green API credentials (stored AES-256-CBC encrypted, decrypted on the fly). Here the executors run against an in-memory seeded store so the demo needs nothing but a Gemini key; the declarations, the agent loop, and the RBAC structure are unchanged.
+
+## Performance & data structures
+
+**Tool dispatch — O(1).** `dispatchTool()` resolves the executor with a plain `Record<toolName, ExecutorFn>` object lookup. Indexing by string name avoids a linear scan through all 22 declarations on every function call.
+
+**Tool declarations — static constant array, allocated once.** The 22 `FunctionDeclaration` objects are module-level constants. They are shared across every invocation of `runCopilot()`, not rebuilt per call. This matters because each declaration is a multi-field object sent to Gemini in the request body; deserialising it once at module load keeps the per-call overhead to a pointer copy.
+
+**Conversation history — bounded linear array.** The history is a `Content[]` (Gemini SDK type) that accumulates user+model turns. In the dashboard channel it is backed by a Firestore document (per-user, per-session key) and has an 8-hour TTL; stale sessions are dropped, not grown indefinitely. The array is passed by reference to the SDK each turn — no copying.
+
+**Agent loop — O(I · E)**, where I ≤ 5 iterations and E is the cost of one executor call. Each iteration is dominated by a single Gemini round-trip and one executor. The loop exits on the first text-only response (no `functionCall`), so a simple one-shot query costs a single iteration; a "find → match → catalog → send" workflow costs 4.
+
+**Mock store — `Map<entityType, object[]>`.** Lookup by entity type is O(1). Filter queries (e.g., `searchEntity` by city or status) scan the type bucket — O(n) where n is the number of seeded records for that type, which is always small (demo data). In production each executor issues a Firestore compound query backed by a composite index, making the scan cost equivalent.
+
+**RBAC check — O(1).** Each executor checks `role === 'admin'` (or a set of allowed roles) before any data access. The role string comes from the JWT claim decoded once at the outer function boundary and threaded through as a context parameter — no re-validation per executor call.

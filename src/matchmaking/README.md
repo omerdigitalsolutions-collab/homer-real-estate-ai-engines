@@ -58,3 +58,17 @@ Score = min(100, round( Σ(Sᵢ·wᵢ) / Σwᵢ · 100 ))
 ## The `requiresVerification` design
 
 The engine never silently passes unknown data. Anything it couldn't confirm (missing neighborhood, unknown room count, unlisted amenity) is collected into `requiresVerification: string[]` and surfaced in the UI as "verify with the seller" chips. This is what makes an LLM-fed pipeline safe: AI-extracted properties with partial data still match, but with an explicit human-in-the-loop marker instead of a fabricated certainty.
+
+## Performance & data structures
+
+**Time complexity — O(C) per pair**, where C is the number of criteria (~6: deal type, city, budget, rooms, location, amenities). Every criterion is a constant-time computation (arithmetic, set lookup, or string comparison), so scoring one property against one lead is effectively O(1) at the data-structure level. Scanning N leads for a new property is O(N) with no cross-pair dependencies, making it trivially parallelisable.
+
+**City normalisation** — city strings are normalised once on the way in (strip hyphens, collapse whitespace, lower-case) and then compared with bidirectional `includes`. In production the normalised form is stored alongside the raw value, so the O(k) normalisation cost is paid once at write time, not at every match.
+
+**Criteria weights** — stored as a plain `Record<criterion, number>` object. The weighted sum `Σ(Sᵢ·wᵢ) / Σwᵢ` is a single linear scan over a constant-length array, O(1) in the limit.
+
+**`requiresVerification` accumulator** — a `string[]` that starts empty and gets one `push()` per uncertain criterion. At most 4 pushes per scoring run (rooms, neighborhood, street, each of the 4 amenities). Kept as a simple array rather than a Set because ordering matters (the UI renders chips in the order issues were found) and duplicates are structurally impossible (each flag is pushed from a separate code path).
+
+**Short-circuit exits** — strict-gate rejections (`null` return) happen before any floating-point arithmetic. The typical rejection path (wrong city or wrong deal type) costs one string comparison and two integer comparisons — the weighted arithmetic is only ever reached for genuine candidates.
+
+**Memory** — the function is stateless and allocation-free beyond the result object. No caches, no closures over mutable state. Multiple scoring calls are independent and GC-friendly.

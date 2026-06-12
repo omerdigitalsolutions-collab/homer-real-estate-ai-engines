@@ -70,3 +70,19 @@ A manual "Unmute bot" override in the CRM re-activates it.
 ## What was adapted for this repo
 
 Firestore session/audit/lead writes are injected via the `PipelineDeps` interface; the 1,800-line production state-machine handler is represented here by its states, tool declarations and prompt builder. Green API credentials are stored AES-256-CBC-encrypted per agency in production and decrypted on the fly.
+
+## Performance & data structures
+
+**Security pipeline — fail-fast sequential O(1)–O(n) chain.** Each layer is evaluated in order; the first rejection exits immediately without evaluating later layers. Blocklist lookup is O(1) (Map/Set). Rate-limit checks are two Firestore reads (per-phone counter + per-agency counter) executed in parallel via `Promise.all`. Injection detection scans the sanitized message once with a pre-compiled regex, O(n) on message length (n ≤ 500 chars after the sanitization cap). Total pipeline overhead for a blocked message is dominated by the two Firestore reads, not computation.
+
+**Suspicion score — cumulative counter, not a per-message binary.** Each injection-pattern hit increments a per-phone score stored in Firestore. Auto-block triggers at ≥ 3. This means a phone that sends borderline messages across several interactions accumulates to a block, while a single unusual word never does. The counter is a single integer field — O(1) read and atomic increment.
+
+**Session state — flat document on the lead record.** `StoredChatState` is a plain object (`state`, `lastStateAt`, optional `pendingSellerAddress`, `pendingIntent`) merged into the lead document. Flat document = one Firestore read to load full session context, no subcollections, no joins.
+
+**Prompt rebuilding — O(P) per message**, where P is the number of properties injected for RAG. Properties are fetched with a single `limit(20)` query on the agency's active-property collection, sorted by `updatedAt` descending. Each property contributes ~100 characters to the prompt. The total prompt is assembled with a single `Array.join` — no incremental string concatenation (avoids O(P²) string-copy behaviour).
+
+**Tool declarations — 6 static `FunctionDeclaration` objects**, module-level constants shared across all bot invocations. Same pattern as the copilot: one allocation at module load, zero per-call allocation.
+
+**Rate-limit counters — two independent windows.** Per-phone: 10 messages per minute (short window, catches single-phone floods). Per-agency: 500 messages per hour (wide window, catches phone-rotation DDoS). Both counters are integers in Firestore, incremented with `FieldValue.increment()` inside a transaction — O(1), atomic, no read-modify-write race.
+
+**24h session TTL — `lastStateAt` timestamp field.** No scheduled job, no separate TTL collection. The pipeline checks `Date.now() - lastStateAt > 86_400_000` on every inbound message; an expired session is deleted inline (one Firestore delete) before processing continues. This is O(1) and eliminates the need for a cleanup cron.

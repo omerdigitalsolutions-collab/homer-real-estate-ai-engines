@@ -34,3 +34,17 @@ The eligible agent with the **oldest** `lastLeadAssignedAt` wins (never-assigned
 ## Notification fan-out
 
 After assignment: in-app alert + WhatsApp message to the agent; for Facebook-sourced leads, an email digest to the agency admin as well (trimmed in this repo). Every notification failure is caught and logged — a dead notification channel never rolls back an assignment.
+
+## Performance & data structures
+
+**Time complexity — O(A log A)** where A is the number of agents in the agency. The transaction reads all agent documents into memory (one Firestore batch read, not N individual reads), applies filters in a single O(A) pass, then sorts the eligible subset by `lastLeadAssignedAt` with `Array.prototype.sort()` — O(A log A) worst case. In practice A ≤ ~50 for any agency, so the sort is negligible.
+
+**Transaction read pattern — reads before writes.** Firestore transactions require that all reads precede the first write; violating this causes a hard error. `distributeToAgent()` loads the entire agent array first, computes the winner outside the transaction's write phase, then issues a single `transaction.update()`. This structure also minimises contention: the exclusive lock is held for the shortest possible window.
+
+**Specialization filter — `Set` lookup, O(1) per agent.** The lead's required specialization is converted to a `Set` once before the loop; each agent's `specializations` array is checked with `Set.has()` rather than `Array.includes()`. For generalist agents (empty array) the check short-circuits immediately.
+
+**City matching reuse.** The geographic filter calls the same `isCityMatch()` normalisation from the matchmaking engine — no second implementation. Normalised forms are compared with `String.includes()` (O(n) on city string length, which is bounded at ~20 characters).
+
+**Round-robin sort key.** Agents are sorted by a single `Date` value (`lastLeadAssignedAt ?? new Date(0)`), replacing `null` with epoch-zero so never-assigned agents always sort first. The sort is stable in V8 (Node ≥ 11) so agents with equal timestamps preserve insertion order.
+
+**Write footprint — one document.** Regardless of how many agents were evaluated, the transaction writes exactly one update: the winner's `lastLeadAssignedAt` timestamp. No other agent documents are touched. This minimises write contention when many leads arrive in the same second.

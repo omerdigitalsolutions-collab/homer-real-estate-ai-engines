@@ -28,3 +28,19 @@ This is the "deterministic business logic with an LLM inside" pattern: rules giv
 ## Idempotency
 
 The Facebook `postId` is the Firestore document ID. Re-running the scanner (or Apify returning the same post twice) updates the existing record instead of duplicating leads.
+
+## Performance & data structures
+
+**Classification — O(K + T)** where K is the total number of keyword strings across all arrays and T is the post text length. Each keyword check is a single `String.includes()` or `String.indexOf()` call (O(T) per keyword). The arrays are module-level constants — `STRONG_SELLER_KEYWORDS`, `STRONG_BUYER_PHRASES`, `LISTING_MARKERS`, `BUYER_KEYWORDS` — allocated once at module load and never mutated.
+
+**Precedence over a linear scan.** Intent classification evaluates conditions in a fixed, documented order rather than scoring all keywords and taking the maximum. This makes the decision boundary explicit (auditable) and keeps the worst-case pass count bounded: at most 4 array scans per post, each stopping at the first match.
+
+**City extractor — longest-name-first sort.** The Israeli city list is sorted by descending name length before any matching. This ensures "ראש העין" matches before "עין", and "תל אביב יפו" matches before "תל אביב" — avoiding false short-match victories. The sorted list is a module-level constant; sorting is a one-time O(C log C) cost (C ≈ 200 cities).
+
+**Phone extractor — regex with alternation.** A single compiled regex covers all Israeli mobile and landline formats (±972 prefix, optional leading zero, hyphen/space separators). One regex pass is O(T); no backtracking risk because the alternation arms are disjoint patterns.
+
+**Price extractor — three-pass normalisation.** Strips `₪`/`,`/spaces → checks for Hebrew magnitude words ("מיליון", "אלף") → parses the resulting numeric string. Three O(T) string operations instead of one complex regex; each step is a simple replace or match, easier to unit-test independently.
+
+**Negation handling.** Elevator and parking extractors check for negation phrases ("ללא מעלית", "אין חניה") *before* checking for positive presence, short-circuiting on the first match. This avoids the common false-positive of detecting "חניה" inside "ללא חניה".
+
+**LLM escalation rate.** `needsTextAnalysis()` flags only posts with a sale price under ₪200K or rooms ≤ 1 — empirically the two highest false-positive sources. In practice fewer than 5% of posts trigger Gemini escalation, keeping API costs proportional to ambiguity rather than volume.

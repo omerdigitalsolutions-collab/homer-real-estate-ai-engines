@@ -30,3 +30,19 @@ import { extractAiData } from '../src/data-extractor/extractAiData';
 
 const { data } = await extractAiData(csvText, 'properties', 'bulk');
 ```
+
+## Performance & data structures
+
+**Prompt lookup — O(1).** `PROMPTS` and `ALIASES` are plain `Record<string, string>` objects; resolving the correct prompt for an entity type is a single property access after one optional alias redirect.
+
+**Dominant cost — one Gemini API call.** Every other operation in the function (input type detection, JSON fence stripping, parse, unwrap) is O(n) in the input length but negligibly fast compared to the model round-trip. The function makes exactly one API call regardless of `single` vs `bulk` mode — both modes send the full input in one request and differ only in the unwrapping step at the end.
+
+**Single vs. bulk unwrapping.** The model always returns a JSON array (the prompt contracts specify this). `single` mode returns `data[0]`; `bulk` mode returns the full array. Both paths are O(1) — no second parse, no transformation loop. The distinction is purely in how the caller consumes the output.
+
+**Image vs. text dispatch.** The `data:image/...` prefix check is a single `String.startsWith()` call, O(1). The two code paths diverge only at the Gemini `Part` construction (`inlineData` vs `text`); the model invocation and response handling are identical.
+
+**JSON fence cleanup — O(n) single pass.** The cleanup regex strips ` ```json `, ` ``` `, and trailing fences in one chained replace. Intentional — models occasionally wrap output despite being told not to, and a one-shot cleanup is cheaper than wrapping every call in a retry loop.
+
+**Error locality.** A parse failure throws immediately with the first 100 characters of the offending output, avoiding silent data corruption. The 100-char cap is deliberate: enough context to debug the issue, not enough to accidentally log sensitive user data from a malformed response.
+
+**Stateless, no caches.** The function creates no closures over mutable state and holds no per-invocation caches. It is safe to call concurrently with different entity types from multiple Cloud Function instances without coordination.
