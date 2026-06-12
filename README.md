@@ -3,7 +3,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue?logo=typescript)
 ![Gemini](https://img.shields.io/badge/Gemini-function--calling-4285F4?logo=google)
 ![Firebase](https://img.shields.io/badge/Firebase-Cloud%20Functions%20Gen2-FFCA28?logo=firebase)
-![License](https://img.shields.io/badge/License-MIT-green)
+![License](https://img.shields.io/badge/License-Proprietary-red)
 
 Production engines extracted from **homer** — a multi-tenant SaaS CRM for Israeli real-estate agencies (React 18 + Firebase + Gemini) that I designed and built end-to-end. Each module here is a self-contained piece of the live system, adapted to run standalone: secrets via env, demo data instead of tenant Firestore, and a README explaining the engineering decisions.
 
@@ -95,4 +95,5 @@ The full product is closed-source. It serves multiple agencies with complete ten
 
 ## License
 
-MIT
+© 2024 Omer Assis. All rights reserved.
+Published for portfolio and demonstration purposes only — viewing permitted, use/copying/distribution is not.
