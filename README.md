@@ -1,11 +1,11 @@
-# hOMER — Real-Estate AI Engines
+# homer — Real-Estate AI Engines
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue?logo=typescript)
 ![Gemini](https://img.shields.io/badge/Gemini-function--calling-4285F4?logo=google)
 ![Firebase](https://img.shields.io/badge/Firebase-Cloud%20Functions%20Gen2-FFCA28?logo=firebase)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-Production engines extracted from **hOMER** — a multi-tenant SaaS CRM for Israeli real-estate agencies (React 18 + Firebase + Gemini) that I designed and built end-to-end. Each module here is a self-contained piece of the live system, adapted to run standalone: secrets via env, demo data instead of tenant Firestore, and a README explaining the engineering decisions.
+Production engines extracted from **homer** — a multi-tenant SaaS CRM for Israeli real-estate agencies (React 18 + Firebase + Gemini) that I designed and built end-to-end. Each module here is a self-contained piece of the live system, adapted to run standalone: secrets via env, demo data instead of tenant Firestore, and a README explaining the engineering decisions.
 
 > Hebrew appears throughout the prompts and demo data — the product serves the Israeli market, and handling Hebrew (RTL, word-form numerals, mixed-language posts) is part of the engineering.
 
